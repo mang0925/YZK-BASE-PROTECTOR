@@ -1,976 +1,816 @@
+-- =============================================
+-- ============== 1. SERVICES & VARIABLES ======
+-- =============================================
+
 local rs = game:GetService("ReplicatedStorage")
-
 local plrs = game:GetService("Players")
-
 local run = game:GetService("RunService")
-
 local lp = plrs.LocalPlayer
-
 local ws = game:GetService("Workspace")
-
 local repsto = game:GetService("ReplicatedStorage")
-
 local stats = game:GetService("Stats")
-
 local uis = game:GetService("UserInputService")
-
 local plrgui = lp:WaitForChild("PlayerGui")
 
 _G.dumpedandremakedbysaturday = {
-
     Mode = "None",
-
     BorderKick = false,
-
     MyPlot = nil,
-
     StealHitbox = nil,
-
     CarpetSpammedPlayers = {},
-
     AdminRemote = nil,
-
     LastPunishTime = {},
-
     TpProtector = false,
-
     PlayerPositions = {},
-
     TpProtectorCooldowns = {},
-
 }
 
 local core = _G.dumpedandremakedbysaturday
 
+
+-- =============================================
+-- ============== 2. FONCTIONS UTILES ==========
+-- =============================================
+
 local function fireAdmin(...)
-
     if not core.AdminRemote then return end
-
     local a = {...}
-
     task.spawn(function()
-
         core.AdminRemote:InvokeServer(unpack(a))
-
     end)
-
 end
 
 local CARPET_ITEMS = {["Flying Carpet"] = true, ["Witch's Broom"] = true, ["Santa's Sleigh"] = true}
 
 function punishPlayer(p)
-
     if not core.AdminRemote then return end
-
     if not p or p == lp then return end
-
     local char = p.Character
-
     if not char then return end
-
     local hrp = char:FindFirstChild("HumanoidRootPart")
-
     if not hrp then return end
-
     local uid = p.UserId
-
     if core.LastPunishTime[uid] and tick() - core.LastPunishTime[uid] < 2 then return end
-
     core.LastPunishTime[uid] = tick()
-
     hrp.CFrame = CFrame.new(0, 10000, 0)
 
     if core.Mode == "Kick" then
-
         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "balloon")
-
-        task.delay(0.3, function() lp:Kick("kick by YZK") end)
-
+        task.delay(0.3, function() lp:Kick("kick by yzk") end)
     elseif core.Mode == "NoKick" then
-
         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "balloon")
-
         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "ragdoll")
-
     end
-
 end
 
 local function findPlayerInHitbox()
-
     local hitbox = core.StealHitbox
-
     if not hitbox then return end
-
     local cf = hitbox.CFrame
-
     local size = hitbox.Size
-
     local hx, hz = size.X * 0.5, size.Z * 0.5
 
     for _, p in ipairs(plrs:GetPlayers()) do
-
         if p ~= lp then
-
             local char = p.Character
-
             if char then
-
                 local hrp = char:FindFirstChild("HumanoidRootPart")
-
                 if hrp then
-
                     local rel = cf:PointToObjectSpace(hrp.Position)
-
                     if math.abs(rel.X) <= hx and math.abs(rel.Z) <= hz then
-
                         for _, item in ipairs(char:GetChildren()) do
-
                             if CARPET_ITEMS[item.Name] then
-
                                 punishPlayer(p)
-
                                 break
-
                             end
-
                         end
-
                     end
-
                 end
-
             end
-
         end
-
     end
-
 end
 
--- ==================== ADMIN REMOTE & ANTI-STEAL LOGIC ====================
+
+-- =============================================
+-- ============== 3. INITIALISATION & HOOKS ====
+-- =============================================
 
 task.spawn(function()
-
     if not lp.Character then lp.CharacterAdded:Wait() end
-
     task.wait(1)
 
+    -- Recherche de l'AdminRemote
     local net = repsto:WaitForChild("Packages"):WaitForChild("Net")
-
     local children = net:GetChildren()
-
     local byIdx = {}
-
     local byName = {}
-
     for i, obj in ipairs(children) do
-
         byIdx[i] = obj
-
         byName[obj.Name] = i
-
     end
-
     local anchorIdx = byName["RF/a0e78691-cb9b-4efc-ac08-9c06fea70059"]
-
     if anchorIdx then
-
         local actual = byIdx[anchorIdx + 1]
-
-        if actual then
-
-            core.AdminRemote = actual
-
-        end
-
+        if actual then core.AdminRemote = actual end
     end
 
+    -- Détection de steal via RemoteEvent
     for _, obj in ipairs(repsto:GetDescendants()) do
-
         if obj:IsA("RemoteEvent") then
-
             obj.OnClientEvent:Connect(function(...)
-
                 if core.Mode == "None" or not core.AdminRemote or not core.MyPlot then return end
-
                 for _, a in ipairs({...}) do
-
                     if type(a) == "string" and a:lower():find("stealing") then
-
+                        -- Trouver le joueur le plus proche et le punir
                         local myHRP = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
-
                         if not myHRP then return end
-
                         local best, bestDist = nil, math.huge
-
                         for _, p in ipairs(plrs:GetPlayers()) do
-
                             if p ~= lp then
-
                                 local char = p.Character
-
                                 if char then
-
                                     local hrp = char:FindFirstChild("HumanoidRootPart")
-
                                     if hrp then
-
                                         local dist = (hrp.Position - myHRP.Position).Magnitude
-
-                                        if dist < bestDist then bestDist = dist best = p end
-
+                                        if dist < bestDist then 
+                                            bestDist = dist 
+                                            best = p 
+                                        end
                                     end
-
                                 end
-
                             end
-
                         end
-
                         if best then punishPlayer(best) end
-
                         return
-
                     end
-
                 end
-
             end)
-
         end
-
     end
-
 end)
 
 task.spawn(function()
-
+    -- Hook sur fireproximityprompt (anti-steal)
     if hookfunction and fireproximityprompt then
-
         local old = fireproximityprompt
-
         hookfunction(fireproximityprompt, newcclosure(function(prompt, ...)
-
             if core.Mode ~= "None" then
-
                 local at = (prompt.ActionText or ""):lower()
-
                 local ot = (prompt.ObjectText or ""):lower()
-
                 if at:find("steal") or ot:find("steal") then
-
                     local part = prompt.Parent
-
                     if part and part:IsA("BasePart") then
-
                         local pos = part.Position
-
                         local best, bestD = nil, math.huge
-
                         for _, p in ipairs(plrs:GetPlayers()) do
-
                             if p ~= lp then
-
                                 local char = p.Character
-
                                 if char then
-
                                     local hrp = char:FindFirstChild("HumanoidRootPart")
-
                                     if hrp then
-
                                         local d = (hrp.Position - pos).Magnitude
-
                                         if d < bestD then bestD = d best = p end
-
                                     end
-
                                 end
-
                             end
-
                         end
-
                         if best and bestD < 20 then punishPlayer(best) end
-
                     end
-
                     findPlayerInHitbox()
-
                 end
-
             end
-
             return old(prompt, ...)
-
         end))
-
     end
 
+    -- Hook sur FireServer
     if hookfunction and newcclosure then
-
         local oldFS = Instance.FireServer
-
         hookfunction(Instance.FireServer, newcclosure(function(self, ...)
-
             if core.Mode ~= "None" and core.StealHitbox then
-
                 findPlayerInHitbox()
-
             end
-
             return oldFS(self, ...)
-
         end))
-
     end
-
 end)
+
+
+-- =============================================
+-- ============== 4. LOOP PING + PLOT ==========
+-- =============================================
 
 local pingLbl = nil
-
 task.spawn(function()
-
     while task.wait(0.5) do
-
+        -- Détection automatique de ton plot
         local plots = ws:FindFirstChild("Plots")
-
         if plots and not core.MyPlot then
-
             for _, p in ipairs(plots:GetChildren()) do
-
                 local sign = p:FindFirstChild("PlotSign")
-
                 if sign then
-
                     local lbl = sign:FindFirstChild("TextLabel", true)
-
                     if lbl then
-
                         local t = lbl.Text:lower()
-
                         if t:find(lp.Name:lower()) or t:find(lp.DisplayName:lower()) then
-
                             core.MyPlot = p
-
                             core.StealHitbox = p:FindFirstChild("StealHitbox", true)
-
                             break
-
                         end
-
                     end
-
                 end
-
             end
-
         end
 
+        -- Mise à jour ancien ping dans la titlebar
         if pingLbl then
-
             local ping = math.floor(stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-
             local safe = ping <= 150
-
             pingLbl.Text = "PING STATUS: " .. (safe and "SAFE" or "HIGH") .. " (" .. ping .. " ms)"
-
             pingLbl.TextColor3 = safe and Color3.fromRGB(0,255,0) or Color3.fromRGB(255,80,80)
-
         end
-
     end
-
 end)
+
+
+-- =============================================
+-- ============== 5. HEARTBEAT (Anti-TP + BorderKick) ==
+-- =============================================
 
 run.Heartbeat:Connect(function()
-
+    -- BorderKick (anti carpet dans la zone)
     if core.BorderKick and core.StealHitbox and core.AdminRemote then
-
         local cf, size = core.StealHitbox.CFrame, core.StealHitbox.Size
-
         local hx, hz = size.X * 0.5, size.Z * 0.5
-
         for _, p in ipairs(plrs:GetPlayers()) do
-
             if p ~= lp then
-
                 local char = p.Character
-
                 if char then
-
                     local hrp = char:FindFirstChild("HumanoidRootPart")
-
                     if hrp then
-
                         local rel = cf:PointToObjectSpace(hrp.Position)
-
                         if math.abs(rel.X) <= hx and math.abs(rel.Z) <= hz then
-
                             for _, item in ipairs(char:GetChildren()) do
-
                                 if CARPET_ITEMS[item.Name] then
-
                                     local uid = p.UserId
-
                                     if not core.CarpetSpammedPlayers[uid] then
-
                                         core.CarpetSpammedPlayers[uid] = true
-
                                         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "balloon")
-
                                         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "jumpscare")
-
                                         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "rocket")
-
                                         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "jail")
-
                                         task.delay(5, function() core.CarpetSpammedPlayers[uid] = nil end)
-
                                     end
-
                                     break
-
                                 end
-
                             end
-
                         end
-
                     end
-
                 end
-
             end
-
         end
-
     end
 
+    -- TP Protector
     if core.TpProtector and core.AdminRemote then
-
         for _, p in ipairs(plrs:GetPlayers()) do
-
             if p ~= lp then
-
                 local char = p.Character
-
                 if char then
-
                     local hrp = char:FindFirstChild("HumanoidRootPart")
-
                     if hrp then
-
                         local cur = hrp.Position
-
                         local uid = p.UserId
-
                         local last = core.PlayerPositions[uid]
-
                         if last and (cur - last).Magnitude > 7 then
-
                             for _, item in ipairs(char:GetChildren()) do
-
                                 if CARPET_ITEMS[item.Name] then
-
                                     if not core.TpProtectorCooldowns[uid] or tick() - core.TpProtectorCooldowns[uid] > 3 then
-
                                         core.TpProtectorCooldowns[uid] = tick()
-
                                         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "balloon")
-
                                         fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "jail")
-
                                     end
-
                                     break
-
                                 end
-
                             end
-
                         end
-
                         core.PlayerPositions[uid] = cur
-
                     end
-
                 end
-
             end
-
         end
-
     end
-
 end)
 
--- ==================== GUI PRINCIPALE (YZK Protector) ====================
+
+-- =============================================
+-- ============== 6. GRANDE FENÊTRE (ExecutorFrame) ==
+-- =============================================
 
 local sg = Instance.new("ScreenGui")
-
 sg.Name = "KdmlExecutorMobile"
-
 sg.Enabled = true
-
 sg.Parent = plrgui
 
 local frame = Instance.new("Frame")
-
 frame.Name = "ExecutorFrame"
-
 frame.Visible = true
-
 frame.ZIndex = 1
-
 frame.AnchorPoint = Vector2.new(0.5, 0.5)
-
 frame.Position = UDim2.new(0.5, 0, 0.5, 0)
-
 frame.Size = UDim2.new(0, 280, 0, 300)
-
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-
+frame.BackgroundColor3 = Color3.fromRGB(20, 16, 36)
 frame.BackgroundTransparency = 0
-
 frame.BorderSizePixel = 0
-
 frame.ClipsDescendants = true
-
 frame.Active = true
-
 frame.Parent = sg
-
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 12)
 
--- Title Bar
-
+-- TitleBar
 local titlebar = Instance.new("Frame")
-
 titlebar.Name = "TitleBar"
-
 titlebar.ZIndex = 2
-
 titlebar.Size = UDim2.new(1, 0, 0, 36)
-
-titlebar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-
+titlebar.BackgroundColor3 = Color3.fromRGB(35, 25, 60)
 titlebar.BorderSizePixel = 0
-
 titlebar.Parent = frame
-
 Instance.new("UICorner", titlebar).CornerRadius = UDim.new(0, 12)
 
+local bfill = Instance.new("Frame")
+bfill.Size = UDim2.new(1, 0, 0, 12)
+bfill.Position = UDim2.new(0, 0, 1, -12)
+bfill.BackgroundColor3 = Color3.fromRGB(35, 25, 60)
+bfill.BorderSizePixel = 0
+bfill.ZIndex = 1
+bfill.Parent = titlebar
+
 local titlelbl = Instance.new("TextLabel")
-
 titlelbl.ZIndex = 3
-
 titlelbl.Position = UDim2.new(0, 10, 0, 0)
-
 titlelbl.Size = UDim2.new(1, -80, 0.6, 0)
-
 titlelbl.BackgroundTransparency = 1
-
-titlelbl.Text = "YZK Protector"
-
-titlelbl.TextColor3 = Color3.fromRGB(240, 230, 255)
-
+titlelbl.Text = "yzk Protecter"
+titlelbl.TextColor3 = Color3.fromRGB(225, 210, 255)
 titlelbl.TextSize = 14
-
 titlelbl.Font = Enum.Font.GothamBold
-
 titlelbl.TextXAlignment = Enum.TextXAlignment.Left
-
 titlelbl.Parent = titlebar
 
-local pinglbl = Instance.new("TextLabel")
-
+local pinglbl = Instance.new("TextLabel")  -- ancien ping dans titlebar
 pinglbl.ZIndex = 3
-
 pinglbl.Position = UDim2.new(0, 10, 0.6, 0)
-
 pinglbl.Size = UDim2.new(1, -80, 0.4, 0)
-
 pinglbl.BackgroundTransparency = 1
-
 pinglbl.Text = "PING STATUS: SAFE (25 ms)"
-
-pinglbl.TextColor3 = Color3.fromRGB(0, 255, 0)
-
+pinglbl.TextColor3 = Color3.fromRGB(160, 120, 255)
 pinglbl.TextSize = 8
-
 pinglbl.Font = Enum.Font.GothamBold
-
 pinglbl.TextXAlignment = Enum.TextXAlignment.Left
-
 pinglbl.Parent = titlebar
-
 pingLbl = pinglbl
 
--- Close & Minimize buttons
-
 local closebtn = Instance.new("TextButton")
-
 closebtn.ZIndex = 3
-
 closebtn.Position = UDim2.new(1, -32, 0.5, -14)
-
 closebtn.Size = UDim2.new(0, 28, 0, 28)
-
-closebtn.BackgroundColor3 = Color3.fromRGB(240, 70, 90)
-
+closebtn.BackgroundColor3 = Color3.fromRGB(200, 60, 130)
 closebtn.Text = "X"
-
 closebtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 closebtn.TextSize = 14
-
 closebtn.Font = Enum.Font.GothamBold
-
 closebtn.Parent = titlebar
-
 Instance.new("UICorner", closebtn).CornerRadius = UDim.new(0, 10)
 
 local minbtn = Instance.new("TextButton")
-
 minbtn.ZIndex = 3
-
 minbtn.Position = UDim2.new(1, -64, 0.5, -14)
-
 minbtn.Size = UDim2.new(0, 28, 0, 28)
-
-minbtn.BackgroundColor3 = Color3.fromRGB(70, 130, 240)
-
+minbtn.BackgroundColor3 = Color3.fromRGB(110, 70, 190)
 minbtn.Text = "_"
-
 minbtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-
 minbtn.TextSize = 16
-
 minbtn.Font = Enum.Font.GothamBold
-
 minbtn.Parent = titlebar
-
 Instance.new("UICorner", minbtn).CornerRadius = UDim.new(0, 10)
 
--- Scroll pour les toggles
-
+-- Scroll des toggles
 local scroll = Instance.new("ScrollingFrame")
-
 scroll.Position = UDim2.new(0, 8, 0, 44)
-
-scroll.Size = UDim2.new(1, -16, 1, -100)
-
+scroll.Size = UDim2.new(1, -16, 1, -112)
 scroll.BackgroundTransparency = 1
-
 scroll.BorderSizePixel = 0
-
 scroll.ClipsDescendants = true
-
 scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-
 scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-
 scroll.ScrollBarThickness = 5
-
+scroll.ScrollBarImageColor3 = Color3.fromRGB(170, 130, 255)
+scroll.ScrollingDirection = Enum.ScrollingDirection.Y
 scroll.Parent = frame
 
 local listlay = Instance.new("UIListLayout")
-
 listlay.Padding = UDim.new(0, 6)
-
 listlay.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
 listlay.SortOrder = Enum.SortOrder.LayoutOrder
-
 listlay.Parent = scroll
-
 Instance.new("UIPadding", scroll).PaddingTop = UDim.new(0, 4)
 
--- Toggles
+-- Statbar en bas de la grande fenêtre
+local statbar = Instance.new("Frame")
+statbar.ZIndex = 2
+statbar.AnchorPoint = Vector2.new(0, 1)
+statbar.Position = UDim2.new(0, 8, 1, -8)
+statbar.Size = UDim2.new(1, -16, 0, 44)
+statbar.BackgroundColor3 = Color3.fromRGB(20, 16, 36)
+statbar.BorderSizePixel = 0
+statbar.Parent = frame
+Instance.new("UICorner", statbar).CornerRadius = UDim.new(0, 10)
+
+local statlbl = Instance.new("TextLabel")
+statlbl.Position = UDim2.new(0, 4, 0, 4)
+statlbl.Size = UDim2.new(1, -8, 1, -8)
+statlbl.BackgroundTransparency = 1
+statlbl.Text = " YZK BASE PROTECTOR "
+statlbl.TextColor3 = Color3.fromRGB(200, 180, 255)
+statlbl.TextSize = 11
+statlbl.Font = Enum.Font.Gotham
+statlbl.TextWrapped = true
+statlbl.TextXAlignment = Enum.TextXAlignment.Left
+statlbl.TextYAlignment = Enum.TextYAlignment.Top
+statlbl.Parent = statbar
+
+
+-- =============================================
+-- ============== 7. TOGGLES ===================
+-- =============================================
 
 local tstates = { Kick = false, NoKick = false, Protector = false, TpProtector = false }
-
 local tdots = {}
-
 local tcolors = {}
 
 local function setVisual(key, state)
-
     local d = tdots[key]
-
     local c = tcolors[key]
-
     if d and c then
-
         d.Position = state and UDim2.new(1, -19, 0, 1) or UDim2.new(0, 1, 0, 1)
-
         d.BackgroundColor3 = state and c or Color3.fromRGB(100, 100, 120)
-
     end
-
 end
 
 local function makeToggleRow(labelText, strokeColor, order, toggleKey)
-
     local row = Instance.new("Frame")
-
     row.LayoutOrder = order
-
     row.Size = UDim2.new(1, -4, 0, 40)
-
-    row.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-
+    row.BackgroundColor3 = Color3.fromRGB(28, 23, 48)
     row.BorderSizePixel = 0
-
     row.Parent = scroll
-
     Instance.new("UICorner", row).CornerRadius = UDim.new(0, 10)
 
     local stroke = Instance.new("UIStroke")
-
     stroke.Color = strokeColor
-
     stroke.Thickness = 1.2
-
     stroke.Transparency = 0.4
-
     stroke.Parent = row
 
     local lbl = Instance.new("TextLabel")
-
     lbl.Position = UDim2.new(0, 10, 0, 0)
-
     lbl.Size = UDim2.new(0.65, 0, 1, 0)
-
     lbl.BackgroundTransparency = 1
-
     lbl.Text = labelText
-
     lbl.TextColor3 = Color3.fromRGB(240, 230, 255)
-
     lbl.TextSize = 12
-
     lbl.Font = Enum.Font.GothamBold
-
     lbl.TextXAlignment = Enum.TextXAlignment.Left
-
     lbl.Parent = row
 
     local track = Instance.new("TextButton")
-
     track.Position = UDim2.new(0.8, 0, 0.5, -10)
-
     track.Size = UDim2.new(0, 40, 0, 20)
-
-    track.BackgroundColor3 = Color3.fromRGB(45, 40, 65)
-
+    track.BackgroundColor3 = Color3.fromRGB(40, 30, 70)
     track.BorderSizePixel = 0
-
     track.Text = ""
-
     track.AutoButtonColor = false
-
     track.Parent = row
-
     Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
 
     local dot = Instance.new("Frame")
-
     dot.Position = UDim2.new(0, 1, 0, 1)
-
     dot.Size = UDim2.new(0, 18, 0, 18)
-
     dot.BackgroundColor3 = Color3.fromRGB(100, 100, 120)
-
     dot.BorderSizePixel = 0
-
     dot.Parent = track
-
     Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
 
     tdots[toggleKey] = dot
-
     tcolors[toggleKey] = strokeColor
 
     local db = false
-
     track.MouseButton1Click:Connect(function()
-
         if db then return end
-
         db = true
-
         local on = not tstates[toggleKey]
-
         tstates[toggleKey] = on
 
         if toggleKey == "Kick" then
-
             if on then core.Mode = "Kick" tstates["NoKick"] = false setVisual("NoKick", false)
-
             else core.Mode = "None" end
-
         elseif toggleKey == "NoKick" then
-
             if on then core.Mode = "NoKick" tstates["Kick"] = false setVisual("Kick", false)
-
             else core.Mode = "None" end
-
         elseif toggleKey == "Protector" then
-
             core.BorderKick = on
-
         elseif toggleKey == "TpProtector" then
-
             core.TpProtector = on
-
         end
 
         setVisual(toggleKey, on)
-
         task.delay(0.2, function() db = false end)
-
     end)
-
 end
 
-local violet = Color3.fromRGB(180, 80, 255)
+makeToggleRow("SPAM IF STEALING (KICK)", Color3.fromRGB(190, 45, 220), 0, "Kick")
+makeToggleRow("SPAM IF STEALING (NO KICK)", Color3.fromRGB(145, 80, 255), 1, "NoKick")
+makeToggleRow("ANTI-TP SCAM (RECOMMENDED)", Color3.fromRGB(200, 70, 255), 2, "Protector")
+makeToggleRow("TP PROTECTOR", Color3.fromRGB(130, 110, 255), 3, "TpProtector")
 
-makeToggleRow("SPAM IF STEALING (KICK)", violet, 0, "Kick")
 
-makeToggleRow("SPAM IF STEALING (NO KICK)", violet, 1, "NoKick")
-
-makeToggleRow("ANTI-TP SCAM (RECOMMENDED)", violet, 2, "Protector")
-
-makeToggleRow("TP PROTECTOR", violet, 3, "TpProtector")
+-- =============================================
+-- ============== 8. BOUTONS & DRAG (Grande fenêtre) ==
+-- =============================================
 
 closebtn.MouseButton1Click:Connect(function() sg.Enabled = false end)
 
 local minimized = false
-
 minbtn.MouseButton1Click:Connect(function()
-
     minimized = not minimized
-
     scroll.Visible = not minimized
-
+    statbar.Visible = not minimized
     frame.Size = minimized and UDim2.new(0, 280, 0, 36) or UDim2.new(0, 280, 0, 300)
-
 end)
 
--- Drag
-
+-- Drag de la grande fenêtre
 do
-
     local dragging, dragStart, frameStart = false, nil, nil
-
     titlebar.InputBegan:Connect(function(i)
-
         if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-
             dragging = true 
-
             dragStart = i.Position 
-
             frameStart = frame.Position
-
         end
-
     end)
-
     titlebar.InputEnded:Connect(function(i)
-
-        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then dragging = false end
-
-    end)
-
-    uis.InputChanged:Connect(function(i)
-
-        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-
-            local delta = i.Position - dragStart
-
-            frame.Position = UDim2.new(frameStart.X.Scale, frameStart.X.Offset + delta.X, frameStart.Y.Scale, frameStart.Y.Offset + delta.Y)
-
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then 
+            dragging = false 
         end
-
     end)
-
+    uis.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local delta = i.Position - dragStart
+            frame.Position = UDim2.new(frameStart.X.Scale, frameStart.X.Offset + delta.X, frameStart.Y.Scale, frameStart.Y.Offset + delta.Y)
+        end
+    end)
 end
 
--- ==================== DASHBOARD (FENÊTRE NOIRE SUPPRIMÉE) ====================
+
+-- =============================================
+-- ============== 9. OVERLAY (Petit Dashboard) ==
+-- =============================================
 
 local sg2 = Instance.new("ScreenGui")
-
 sg2.Name = "ModernDashboard"
-
-sg2.Enabled = false        -- Désactivé dès le départ
-
+sg2.Enabled = true
 sg2.Parent = plrgui
 
--- On ne crée même plus le dashframe pour éviter la fenêtre noire
+local dashframe = Instance.new("Frame")
+dashframe.AnchorPoint = Vector2.new(0.5, 0)
+dashframe.Position = UDim2.new(0.5, 0, 0, 106)
+dashframe.Size = UDim2.new(0, 280, 0, 100)
+dashframe.BackgroundColor3 = Color3.fromRGB(8, 6, 18)        -- Bleu foncé / Violet très sombre
+dashframe.BackgroundTransparency = 0.05
+dashframe.BorderSizePixel = 0
+dashframe.ClipsDescendants = true
+dashframe.Active = true
+dashframe.Parent = sg2
 
--- Si tu veux le garder visible plus tard, tu pourras le réactiver
+Instance.new("UICorner", dashframe).CornerRadius = UDim.new(0, 16)
 
--- Nettoyage supplémentaire au cas où la fenêtre noire apparaît quand même
+local dashstroke = Instance.new("UIStroke")
+dashstroke.Color = Color3.fromRGB(120, 80, 255)              -- Violet clair / Bleu-violet
+dashstroke.Thickness = 2
+dashstroke.Transparency = 0.15
+dashstroke.Parent = dashframe
 
-task.spawn(function()
+local topsec = Instance.new("Frame")
+topsec.Size = UDim2.new(1, 0, 0.4, 0)
+topsec.BackgroundTransparency = 1
+topsec.Parent = dashframe
 
-    task.wait(1.5)
+-- Titre principal
+local hubtitle = Instance.new("TextLabel")
+hubtitle.Position = UDim2.new(0.5, 0, 0, 0)
+hubtitle.AnchorPoint = Vector2.new(0.5, 0)
+hubtitle.Size = UDim2.new(0.9, 0, 0.55, 0)
+hubtitle.BackgroundTransparency = 1
+hubtitle.Text = "YZK BASE PROTECTOR"
+hubtitle.TextColor3 = Color3.fromRGB(240, 240, 255)          -- Blanc légèrement bleuté
+hubtitle.TextSize = 17
+hubtitle.Font = Enum.Font.GothamBold
+hubtitle.TextXAlignment = Enum.TextXAlignment.Center
+hubtitle.Parent = topsec
 
-    for _, gui in ipairs(plrgui:GetDescendants()) do
+-- @yzkontop | discord.gg/yzk  (juste en dessous et centré)
+local disclbl = Instance.new("TextLabel")
+disclbl.Position = UDim2.new(0.5, 0, 0.58, 0)
+disclbl.AnchorPoint = Vector2.new(0.5, 0)
+disclbl.Size = UDim2.new(0.9, 0, 0.38, 0)
+disclbl.BackgroundTransparency = 1
+disclbl.Text = "@yzkontop | discord.gg/yzk"
+disclbl.TextColor3 = Color3.fromRGB(160, 140, 255)           -- Violet clair
+disclbl.TextSize = 10.5
+disclbl.Font = Enum.Font.GothamMedium
+disclbl.TextXAlignment = Enum.TextXAlignment.Center
+disclbl.Parent = topsec
 
-        if gui:IsA("TextLabel") or gui:IsA("TextButton") then
+-- Status dot (violet brillant)
+local statusdot = Instance.new("Frame")
+statusdot.Position = UDim2.new(0.9, -5, 0.5, -5)
+statusdot.Size = UDim2.new(0, 10, 0, 10)
+statusdot.BackgroundColor3 = Color3.fromRGB(140, 100, 255)
+statusdot.BorderSizePixel = 0
+statusdot.Parent = topsec
+Instance.new("UICorner", statusdot).CornerRadius = UDim.new(1, 0)
 
-            local txt = gui.Text:upper()
+local botsec = Instance.new("Frame")
+botsec.Position = UDim2.new(0, 0, 0.4, 0)
+botsec.Size = UDim2.new(1, 0, 0.6, 0)
+botsec.BackgroundTransparency = 1
+botsec.Parent = dashframe
 
-            if txt:find("MULTI") or txt:find("X18") or txt:find("ENT MULTI") then
+-- FPS centré (bleu cyan)
+local fpslbl = Instance.new("TextLabel")
+fpslbl.Position = UDim2.new(0.5, -68, 0.5, 0)
+fpslbl.AnchorPoint = Vector2.new(0.5, 0.5)
+fpslbl.Size = UDim2.new(0, 120, 0.8, 0)
+fpslbl.BackgroundTransparency = 1
+fpslbl.Text = "FPS: 60"
+fpslbl.TextColor3 = Color3.fromRGB(0, 255, 220)              -- Cyan / Bleu turquoise
+fpslbl.TextSize = 13
+fpslbl.Font = Enum.Font.GothamBold
+fpslbl.TextXAlignment = Enum.TextXAlignment.Center
+fpslbl.Parent = botsec
 
-                local parent = gui
+-- Ping centré (violet rose)
+local pinglbl = Instance.new("TextLabel")
+pinglbl.Position = UDim2.new(0.5, 68, 0.5, 0)
+pinglbl.AnchorPoint = Vector2.new(0.5, 0.5)
+pinglbl.Size = UDim2.new(0, 120, 0.8, 0)
+pinglbl.BackgroundTransparency = 1
+pinglbl.Text = "PING: 30 ms"
+pinglbl.TextColor3 = Color3.fromRGB(200, 120, 255)           -- Violet rose
+pinglbl.TextSize = 13
+pinglbl.Font = Enum.Font.GothamBold
+pinglbl.TextXAlignment = Enum.TextXAlignment.Center
+pinglbl.Parent = botsec
 
-                while parent and not parent:IsA("ScreenGui") do
-
-                    parent = parent.Parent
-
-                end
-
-                if parent and parent ~= sg then
-
-                    parent:Destroy()
-
-                    print("Fenêtre noire MULTI supprimée avec succès")
-
-                end
-
-                break
-
-            end
-
+-- Mise à jour FPS
+local lastTime = tick()
+local frameCount = 0
+run.Heartbeat:Connect(function()
+    frameCount += 1
+    local now = tick()
+    if now - lastTime >= 1 then
+        local fps = math.floor(frameCount / (now - lastTime))
+        fpslbl.Text = "FPS: " .. fps
+        
+        if fps >= 55 then
+            fpslbl.TextColor3 = Color3.fromRGB(0, 255, 220)
+        elseif fps >= 35 then
+            fpslbl.TextColor3 = Color3.fromRGB(255, 200, 100)
+        else
+            fpslbl.TextColor3 = Color3.fromRGB(255, 80, 80)
         end
-
     end
-
+    frameCount = 0
+    lastTime = now
 end)
 
--- Player list (gardée comme avant)
+-- Mise à jour Ping
+task.spawn(function()
+    while task.wait(0.5) do
+        local ping = math.floor(stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+        pinglbl.Text = "PING: " .. ping .. " ms"
+        
+        if ping <= 80 then
+            pinglbl.TextColor3 = Color3.fromRGB(0, 255, 220)
+        elseif ping <= 150 then
+            pinglbl.TextColor3 = Color3.fromRGB(200, 120, 255)
+        else
+            pinglbl.TextColor3 = Color3.fromRGB(255, 80, 80)
+        end
+    end
+end)
+
+-- Drag de l'overlay
+do
+    local dragging, dragStart, frameStart = false, nil, nil
+    dashframe.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = i.Position
+            frameStart = dashframe.Position
+        end
+    end)
+    dashframe.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    uis.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local delta = i.Position - dragStart
+            dashframe.Position = UDim2.new(frameStart.X.Scale, frameStart.X.Offset + delta.X, frameStart.Y.Scale, frameStart.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+-- =============================================
+-- ============== 10. PLAYER LIST ==============
+-- =============================================
 
 local playerRows = {}
 
 local function addPlayerRow(p)
-
     if p == lp or playerRows[p.UserId] then return end
+    local prow = Instance.new("Frame")
+    prow.LayoutOrder = 1000000 + p.UserId % 100000
+    prow.Size = UDim2.new(1, -4, 0, 60)
+    prow.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    prow.BorderSizePixel = 0
+    prow.Parent = scroll
+    Instance.new("UICorner", prow).CornerRadius = UDim.new(0, 10)
 
-    -- ... (ton code pour ajouter les lignes de joueurs reste identique)
+    local avatar = Instance.new("ImageLabel")
+    avatar.Position = UDim2.new(0, 8, 0, 10)
+    avatar.Size = UDim2.new(0, 40, 0, 40)
+    avatar.BackgroundTransparency = 1
+    avatar.Image = "rbxthumb://type=AvatarHeadShot&id=" .. p.UserId .. "&w=150&h=150"
+    avatar.Parent = prow
+    Instance.new("UICorner", avatar).CornerRadius = UDim.new(1, 0)
 
-    -- Je l'ai laissé de côté ici pour ne pas allonger inutilement, mais tu peux le remettre tel quel
+    local namelbl = Instance.new("TextLabel")
+    namelbl.Position = UDim2.new(0, 55, 0, 8)
+    namelbl.Size = UDim2.new(1, -130, 0, 20)
+    namelbl.BackgroundTransparency = 1
+    namelbl.Text = p.Name
+    namelbl.TextColor3 = Color3.fromRGB(235, 225, 255)
+    namelbl.TextSize = 12
+    namelbl.Font = Enum.Font.GothamBold
+    namelbl.TextXAlignment = Enum.TextXAlignment.Left
+    namelbl.Parent = prow
 
+    local rolelbl = Instance.new("TextLabel")
+    rolelbl.Position = UDim2.new(0, 55, 0, 28)
+    rolelbl.Size = UDim2.new(1, -130, 0, 16)
+    rolelbl.BackgroundTransparency = 1
+    rolelbl.Text = "Player"
+    rolelbl.TextColor3 = Color3.fromRGB(160, 150, 200)
+    rolelbl.TextSize = 10
+    rolelbl.Font = Enum.Font.Gotham
+    rolelbl.TextXAlignment = Enum.TextXAlignment.Left
+    rolelbl.Parent = prow
+
+    local spambtn = Instance.new("TextButton")
+    spambtn.Position = UDim2.new(1, -70, 0.5, -11)
+    spambtn.Size = UDim2.new(0, 60, 0, 22)
+    spambtn.BackgroundColor3 = Color3.fromRGB(255, 0, 0)
+    spambtn.Text = "⚡SPAM⚡"
+    spambtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    spambtn.TextSize = 12
+    spambtn.Font = Enum.Font.GothamBold
+    spambtn.Parent = prow
+    Instance.new("UICorner", spambtn).CornerRadius = UDim.new(0, 8)
+
+    spambtn.MouseButton1Click:Connect(function()
+        if not core.AdminRemote then return end
+        fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "balloon")
+        fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "ragdoll")
+        fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "jumpscare")
+        fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "rocket")
+        fireAdmin("f888ee6e-c86d-46e1-93d7-0639d6635d42", p, "jail")
+        punishPlayer(p)
+    end)
+
+    playerRows[p.UserId] = prow
+end
+
+local function removePlayerRow(p)
+    if playerRows[p.UserId] then
+        playerRows[p.UserId]:Destroy()
+        playerRows[p.UserId] = nil
+    end
 end
 
 for _, p in ipairs(plrs:GetPlayers()) do addPlayerRow(p) end
-
 plrs.PlayerAdded:Connect(addPlayerRow)
-
-plrs.PlayerRemoving:Connect(remove-PlayerRow)
- 
+plrs.PlayerRemoving:Connect(removePlayerRow)
